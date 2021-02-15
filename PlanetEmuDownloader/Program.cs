@@ -151,11 +151,11 @@ namespace PlanetEmuDownloader
 
                 myWebClient.DownloadFile(myStringWebResource, fileName);
 
-                System.Threading.Thread.Sleep(20000);
+                System.Threading.Thread.Sleep(20000 + new Random().Next(20000));
 
                 retour = true;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 retour = false;
             }
