@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
@@ -14,7 +15,7 @@ namespace PlanetEmuDownloader
     {
         private static Uri baseUri = new Uri("https://www.planetemu.net");
         private static string downloadLink = "/php/roms/download.php";
-        private static string link1 = "/roms/sinclair-zx-spectrum-tzx?page=";
+        private static string pageLink = "/roms/sinclair-zx-spectrum-tzx?page=";
         private static string letters = "0ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
         private static string downloadFolder = "";
@@ -23,14 +24,18 @@ namespace PlanetEmuDownloader
 
         static void Main(string[] args)
         {
+            Intro();
+
             CheckDownloadFolder();
 
             foreach (var letter in letters)
             {
                 var doc = new HtmlDocument();
 
-                doc.LoadHtml(URLRequest(baseUri.AbsoluteUri + link1 + letter));
+                doc.LoadHtml(URLRequest(baseUri.AbsoluteUri + pageLink + letter));
 
+                // Il n'y a pas de balise pour identifier les liens ne concernant "que les roms"
+                // alors on se sert des classes "rompair" et "romimpair" pour les retrouver
                 var anchorPairNodes = doc.DocumentNode.SelectNodes("//tr[@class='rompair']/td/a");
                 var anchorImpairNodes = doc.DocumentNode.SelectNodes("//tr[@class='romimpair']/td/a");
 
@@ -46,7 +51,7 @@ namespace PlanetEmuDownloader
                                 name = anchorNode.InnerText.Trim(),
                                 path = anchorNode.GetAttributeValue("href", "").Trim(),
                                 alreadyDownloaded = false,
-                            }); 
+                            });
                         }
                     }
                 }
@@ -58,7 +63,7 @@ namespace PlanetEmuDownloader
                         if ((anchorNode.InnerText.Trim() != "") && (anchorNode.GetAttributeValue("href", "").Trim() != ""))
                         {
                             //Console.WriteLine($"{anchorNode.InnerText.Trim()}§{anchorNode.GetAttributeValue("href", "").Trim()}");
-                            totalAnchors.Add( new Enreg
+                            totalAnchors.Add(new Enreg
                             {
                                 name = anchorNode.InnerText.Trim(),
                                 path = anchorNode.GetAttributeValue("href", "").Trim(),
@@ -78,7 +83,7 @@ namespace PlanetEmuDownloader
             Console.WriteLine($"Restent : { totalAnchors.Count - totalAnchors.Where(d => d.alreadyDownloaded).Count()}");
 
             List<Enreg> sortedAnchors = totalAnchors.OrderBy(o => o.name).ToList();
-            
+
             foreach (Enreg enreg in sortedAnchors.Where(x => !x.alreadyDownloaded))
             {
                 string title;
@@ -107,6 +112,19 @@ namespace PlanetEmuDownloader
             Console.ReadKey();
         }
 
+        private static void Intro()
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+
+            Console.WriteLine("*-*-*-*-*-*-*-*-*-*-*-*-*-*-*");
+            Console.WriteLine("* PlanetEmu Downloader v0.1 *");
+            Console.WriteLine("*-*-*-*-*-*-*-*-*-*-*-*-*-*-*");
+        }
+
+        /// <summary>
+        /// Sert à vérifier les zip déjà téléchargés pour ne pas les descendre une deuxième fois
+        /// en cas de redémarrage en cours de route.
+        /// </summary>
         private static void CheckAlreadyDownloaded()
         {
             foreach (Enreg enreg in totalAnchors)
@@ -118,6 +136,11 @@ namespace PlanetEmuDownloader
             }
         }
 
+        /// <summary>
+        /// On vérifie que le chemin de sauvegarde des roms existe bien, sinon, on le crée
+        /// dans un sous-répertoire du répertoire d'exécution.
+        /// </summary>
+        /// <param name="folderName"></param>
         private static void CheckDownloadFolder(string folderName = "downloads")
         {
             downloadFolder = AppDomain.CurrentDomain.BaseDirectory + folderName;
@@ -128,43 +151,64 @@ namespace PlanetEmuDownloader
             }
         }
 
+        /// <summary>
+        /// Procède à un download en passant par une méthode POST (passage de paramètre ID !)
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="fileName"></param>
+        /// <returns></returns>
         private static bool DownloadUrl(string path, string fileName)
         {
             bool retour = false;
             Uri myStringWebResource = null;
 
             var doc = new HtmlDocument();
+            string urlRequest = URLRequest(path);
 
-            doc.LoadHtml(URLRequest(path));
-
-            var postNodes = doc.DocumentNode.SelectNodes("//input[@name='id']");
-
-            string fileId = postNodes[0].GetAttributeValue("value", "").Trim();
-            
-            try
+            if (!string.IsNullOrEmpty(urlRequest))
             {
-                ExtWebClient myWebClient = new ExtWebClient();
-                myWebClient.PostParam = new NameValueCollection();
-                myWebClient.PostParam["id"] = fileId;
-                // Concatenate the domain with the Web resource filename.
-                myStringWebResource = new Uri(baseUri.AbsoluteUri + downloadLink);
+                doc.LoadHtml(urlRequest);
 
-                myWebClient.DownloadFile(myStringWebResource, fileName);
+                var postNodes = doc.DocumentNode.SelectNodes("//input[@name='id']");
 
-                System.Threading.Thread.Sleep(20000 + new Random().Next(20000));
+                string fileId = postNodes[0].GetAttributeValue("value", "").Trim();
 
-                retour = true;
+                try
+                {
+                    ExtWebClient myWebClient = new ExtWebClient();
+                    myWebClient.PostParam = new NameValueCollection();
+                    myWebClient.PostParam["id"] = fileId;
+                    // Concatenate the domain with the Web resource filename.
+                    myStringWebResource = new Uri(baseUri.AbsoluteUri + downloadLink);
+
+                    myWebClient.DownloadFile(myStringWebResource, fileName);
+
+                    // Variation entre 20 et 40 secondes pour tromper l'ennemi :D
+                    // et pour palier la limite de download à 1 rom toute les 15 secondes max !
+                    System.Threading.Thread.Sleep(20000 + new Random().Next(20000));
+
+                    retour = true;
+                }
+                catch (Exception)
+                {
+                    retour = false;
+                }
             }
-            catch (Exception)
+            else
             {
-                retour = false;
+                Console.WriteLine("Problème (Timeout ?)");
             }
+
             return retour;
         }
 
         #region Helpers
 
-        //General Function to request data from a Server
+        /// <summary>
+        /// General Function to request data from a Server in HTML format
+        /// </summary>
+        /// <param name="url"></param>
+        /// <returns></returns>
         static string URLRequest(string url)
         {
             // Prepare the Request
@@ -194,9 +238,10 @@ namespace PlanetEmuDownloader
                     }
                 }
             }
-            catch (Exception e)
+            catch (WebException we)
             {
-                Console.WriteLine(e);
+                Console.WriteLine(we);
+                return "";
             }
             return (responseContent);
         }
