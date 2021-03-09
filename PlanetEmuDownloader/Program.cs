@@ -15,7 +15,12 @@ namespace PlanetEmuDownloader
     {
         private static Uri baseUri = new Uri("https://www.planetemu.net");
         private static string downloadLink = "/php/roms/download.php";
-        private static string pageLink = "/roms/sinclair-zx-spectrum-tzx?page=";
+
+        // private static string pageLink = "/roms/sinclair-zx-spectrum-tzx?page="; // ZX Spectrum TZX
+        //private static string machinePage = "atari-st-demos"; // Atari ST Demos Disk
+        private static string machinePage = "atari-st-games-st"; // Atari ST Game Disk
+
+        private static string pageLink = $"/roms/{machinePage}?page=";
         private static string letters = "0ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
         private static string downloadFolder = "";
@@ -26,7 +31,7 @@ namespace PlanetEmuDownloader
         {
             Intro();
 
-            CheckDownloadFolder();
+            CheckDownloadFolder(machinePage);
 
             foreach (var letter in letters)
             {
